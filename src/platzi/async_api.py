@@ -272,6 +272,8 @@ class AsyncPlatzi:
                     await self.save_page(unit.url, path=dst)
 
             print("=" * 100)
+            
+        Logger.print(f"Curso '{course_title}' completado exitosamente", "[CURSO-COMPLETADO]", "green")
 
     @try_except_request
     async def save_page(
