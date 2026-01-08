@@ -182,6 +182,16 @@ class AsyncPlatzi:
 
             # iterate over units
             for jdx, draft_unit in enumerate(draft_chapter.units, 1):
+                # OPTIMIZATION: Check if file exists to avoid unnecessary scraping (Resume capability)
+                file_name_candidate = f"{jdx:02}-{clean_string(draft_unit.title)}"
+                dst_mp4 = CHAP_DIR / f"{file_name_candidate}.mp4"
+                dst_mhtml = CHAP_DIR / f"{file_name_candidate}.mhtml"
+                
+                overwrite = kwargs.get("overwrite", False)
+                if not overwrite and (dst_mp4.exists() or dst_mhtml.exists()):
+                    Logger.print(f"[{file_name_candidate}]", "[OMITIDO-YA-EXISTE]")
+                    continue
+
                 unit = await get_unit(self.context, draft_unit.url)
                 file_name = f"{jdx:02}-{clean_string(unit.title)}"
 
