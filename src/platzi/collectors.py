@@ -25,35 +25,88 @@ async def get_course_title(page: Page) -> str:
 
 @Cache.cache_async
 async def get_draft_chapters(page: Page) -> list[Chapter]:
-    SELECTOR = "section[class*='Syllabus'] article"
+    # The new structure seems to contain the syllabus in an article or main container
+    # Sections (Chapters) and Unit Lists are siblings.
+    # We look for the common container and then iterate through children.
+    
     EXCEPTION = Exception("No sections found")
     try:
-        locator = page.locator(SELECTOR)
+        # Improved strategy: Look for the chapter titles which seem to be universally identifiably by
+        # having the class 'SyllabusSection' or containing the data attribute.
+        # We can find all chapter headers, and for each, find the immediately following UL.
+        
+        # This selector targets the chapter header containers
+        CHAPTER_HEADER_SELECTOR = "div[class*='SyllabusSection-module_SyllabusSection']"
+        
+        try:
+            await page.wait_for_selector(CHAPTER_HEADER_SELECTOR, timeout=10000)
+        except Exception:
+            pass
+            
+        chapter_headers = page.locator(CHAPTER_HEADER_SELECTOR)
+        count = await chapter_headers.count()
+        
+        if count == 0:
+            raise EXCEPTION
 
         chapters: list[Chapter] = []
-        for i in range(await locator.count()):
-            chapter_name = await locator.nth(i).locator("h2").first.text_content()
-
+        
+        for i in range(count):
+            header = chapter_headers.nth(i)
+            
+            # Extract chapter title
+            # Tries to find the span with the data attribute or just the h3 text
+            title_el = header.locator("[data-qa-syllabus-class-title]")
+            if await title_el.count() == 0:
+                # Fallback to h3 if data attribute is missing
+                title_el = header.locator("h3")
+                
+            chapter_name = await title_el.first.text_content()
             if not chapter_name:
-                raise EXCEPTION
+                continue # Skip if no title found
 
-            block_list_locator = locator.nth(i).locator("a[class*='ItemLink']")
+            # The lessons list is likely the NEXT SIBLING <ul> of this header div
+            # We can use XPath to get the following sibling that is a UL
+            # The structure is: DIV (Header) -> UL (Lessons) -> DIV (Header) -> ...
+            # We search for the immediate following-sibling that is a 'ul'
+            lessons_list = header.locator("xpath=following-sibling::ul[1]")
+            
+            if await lessons_list.count() == 0:
+                # If no list follows, maybe it's empty or structure is different? 
+                # Just continue to next chapter.
+                continue
 
+            # Iterate over lessons in the list
+            # Lesson items are 'li'
+            lesson_items = lessons_list.locator("li")
+            item_count = await lesson_items.count()
+            
             units: list[Unit] = []
-            for j in range(await block_list_locator.count()):
-                ITEM_LOCATOR = block_list_locator.nth(j)
-
-                unit_url = await ITEM_LOCATOR.get_attribute("href")
-                unit_title = await ITEM_LOCATOR.locator("h3").first.text_content()
+            for j in range(item_count):
+                item = lesson_items.nth(j)
+                
+                # Link selector: a[class*='ItemLink']
+                link_el = item.locator("a[class*='ItemLink']")
+                if await link_el.count() == 0:
+                    continue
+                    
+                unit_url = await link_el.get_attribute("href")
+                
+                # Title selector: h3 inside the link
+                unit_title_el = link_el.locator("h3")
+                unit_title = await unit_title_el.first.text_content()
 
                 if not unit_url or not unit_title:
-                    raise EXCEPTION
+                    continue
+
+                if not unit_url.startswith("http"):
+                    unit_url = PLATZI_URL + unit_url
 
                 units.append(
                     Unit(
                         type=TypeUnit.VIDEO,
                         title=unit_title,
-                        url=PLATZI_URL + unit_url,
+                        url=unit_url,
                         slug=slugify(unit_title),
                     )
                 )

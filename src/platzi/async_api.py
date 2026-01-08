@@ -189,7 +189,19 @@ class AsyncPlatzi:
                 if unit.video:
                     dst = CHAP_DIR / f"{file_name}.mp4"
                     Logger.print(f"[{dst.name}]", "[DOWNLOADING-VIDEO]")
-                    await m3u8_dl(unit.video.url, dst, headers=HEADERS, **kwargs)
+                    
+                    # Get cookies from context to pass to m3u8_dl
+                    cookies = await self.context.cookies()
+                    # Convert to dict {name: value}
+                    cookies_dict = {c["name"]: c["value"] for c in cookies}
+                    
+                    await m3u8_dl(
+                        unit.video.url, 
+                        dst, 
+                        headers=HEADERS, 
+                        cookies=cookies_dict,
+                        **kwargs
+                    )
 
                     # download subtitles
                     subs = unit.video.subtitles_url

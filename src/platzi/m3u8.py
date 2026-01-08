@@ -13,6 +13,8 @@ from tqdm.asyncio import tqdm
 
 from .constants import HEADERS
 from .helpers import retry
+from .logger import Logger
+import copy
 
 
 def ffmpeg_required(func):
@@ -55,8 +57,11 @@ async def _ts_dl(url: str, path: Path, **kwargs):
     path.unlink(missing_ok=True)
     path.parent.mkdir(parents=True, exist_ok=True)
 
-    client = rnet.Client(impersonate=rnet.Impersonate.Firefox139)
-    response: rnet.Response = await client.get(url, headers=HEADERS)
+    san_headers = copy.deepcopy(HEADERS)
+    san_headers.pop("User-Agent", None)
+
+    client = rnet.Client(impersonate=rnet.Impersonate.Chrome133, cookies=kwargs.get("cookies"))
+    response: rnet.Response = await client.get(url, headers=san_headers)
 
     try:
         if not response.ok:
@@ -122,12 +127,17 @@ async def _m3u8_dl(
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_dir.mkdir(parents=True, exist_ok=True)
 
-    client = rnet.Client(impersonate=rnet.Impersonate.Firefox139)
-    response: rnet.Response = await client.get(url, headers=HEADERS)
+    san_headers = copy.deepcopy(HEADERS)
+    san_headers.pop("User-Agent", None)
+
+    client = rnet.Client(impersonate=rnet.Impersonate.Chrome133, cookies=kwargs.get("cookies"))
+    response: rnet.Response = await client.get(url, headers=san_headers)
 
     try:
         if not response.ok:
-            raise Exception("Error downloading m3u8")
+            error_msg = f"Error downloading m3u8 (chunklist): Status {response.status}\nHeaders: {response.headers}\nBody: {await response.text()}"
+            Logger.error(error_msg)
+            raise Exception(error_msg)
 
         ts_urls = _extract_streaming_urls(await response.text())
 
@@ -210,12 +220,17 @@ async def m3u8_dl(
     if not overwrite and path.exists():
         return
 
-    client = rnet.Client(impersonate=rnet.Impersonate.Firefox139)
-    response: rnet.Response = await client.get(url, headers=HEADERS)
+    san_headers = copy.deepcopy(HEADERS)
+    san_headers.pop("User-Agent", None)
+
+    client = rnet.Client(impersonate=rnet.Impersonate.Chrome133, cookies=kwargs.get("cookies"))
+    response: rnet.Response = await client.get(url, headers=san_headers)
 
     try:
         if not response.ok:
-            raise Exception("Error downloading m3u8")
+            error_msg = f"Error downloading m3u8: Status {response.status}\nHeaders: {response.headers}\nBody: {await response.text()}"
+            Logger.error(error_msg)
+            raise Exception(error_msg)
 
         m3u8_urls = _extract_streaming_urls(
             await response.text()
